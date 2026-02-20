@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S.H.I.E.L.D. | Painel de Monitoramento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            background-color: #0b1120;
+            color: #f8fafc;
+            font-family: ui-sans-serif, system-ui, sans-serif;
+        }
+
+        .glitch-border {
+            box-shadow: 0 0 20px rgba(14, 165, 233, 0.15);
+        }
+
+        .status-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .5;
+            }
+        }
+    </style>
+</head>
+
+<body class="flex flex-col items-center justify-center min-h-screen p-4 md:p-8">
+
+    <div class="max-w-4xl w-full bg-slate-900 rounded-2xl p-6 shadow-2xl border border-slate-800 glitch-border">
+        <div class="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+            <h1 class="text-2xl font-bold tracking-tight text-sky-400">Terminal de Ligação P2P</h1>
+            <div class="flex items-center gap-2 px-3 py-1 bg-slate-950 rounded-full border border-slate-800">
+                <div id="status-indicator" class="w-2 h-2 rounded-full bg-amber-500 status-dot"></div>
+                <span id="status-text" class="text-xs font-mono text-slate-300">Inicializando...</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-1 space-y-4">
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Link de
+                        Interceptação</label>
+                    <input type="text" id="link-input" readonly
+                        class="w-full bg-slate-900 text-sky-300 px-3 py-2 rounded focus:outline-none text-xs font-mono border border-slate-700 mb-2">
+                    <button onclick="copiarLink()"
+                        class="w-full bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded text-sm transition font-medium">Copiar
+                        Link</button>
+                </div>
+
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Controles
+                        Remotos</label>
+                    <button id="btn-stop" onclick="encerrarConexao()" disabled
+                        class="w-full bg-red-900/50 hover:bg-red-600 text-red-200 px-4 py-3 rounded text-sm transition font-medium border border-red-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path>
+                        </svg>
+                        Encerrar Protocolo
+                    </button>
+                </div>
+            </div>
+
+            <div
+                class="lg:col-span-2 relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-inner">
+                <video id="remote-video" class="w-full h-full object-cover transition-opacity duration-500 opacity-0"
+                    autoplay playsinline></video>
+
+                <div id="overlay-layer"
+                    class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 transition-opacity duration-300">
+                    <svg class="w-12 h-12 text-slate-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
+                        </path>
+                    </svg>
+                    <span id="overlay-text" class="text-slate-400 font-mono text-sm tracking-wide">Aguardando
+                        Feed...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mantém seu ID de agente fixo mesmo após F5
+        const CHAVE_SESSAO = 'shield_agent_id';
+        let myId = localStorage.getItem(CHAVE_SESSAO);
+        if (!myId) {
+            myId = 'agent-' + Math.random().toString(36).substring(2, 10);
+            localStorage.setItem(CHAVE_SESSAO, myId);
+        }
+
+        const peer = new Peer(myId);
+        let conexaoDadosAtiva = null;
+
+        const ui = {
+            statusText: document.getElementById('status-text'),
+            statusInd: document.getElementById('status-indicator'),
+            video: document.getElementById('remote-video'),
+            overlay: document.getElementById('overlay-layer'),
+            overlayText: document.getElementById('overlay-text'),
+            btnStop: document.getElementById('btn-stop')
+        };
+
+        function setStatus(msg, colorClass) {
+            ui.statusText.textContent = msg;
+            ui.statusInd.className = `w-2 h-2 rounded-full status-dot ${colorClass}`;
+        }
+
+        peer.on('open', (id) => {
+            setStatus("Sistema Online. Pronto para interceptação.", "bg-sky-500");
+            const baseUrl = window.location.href.replace('index.html', '').split('?')[0];
+            document.getElementById('link-input').value = `${baseUrl}camera.html?target=${id}`;
+        });
+
+        // Escuta o canal de dados (para o botão de parar)
+        peer.on('connection', (conn) => {
+            conexaoDadosAtiva = conn;
+        });
+
+        // Recebe o vídeo de forma bruta
+        peer.on('call', (call) => {
+            call.answer();
+            setStatus("Sinal detectado. Restabelecendo feed...", "bg-emerald-500");
+            ui.btnStop.disabled = false;
+
+            call.on('stream', (remoteStream) => {
+                ui.video.srcObject = remoteStream;
+                ui.video.classList.remove('opacity-0');
+                ui.overlay.classList.add('opacity-0', 'pointer-events-none');
+                setStatus("Conexão Estabelecida.", "bg-emerald-500");
+            });
+
+            call.on('close', resetarInterface);
+        });
+
+        function encerrarConexao() {
+            if (conexaoDadosAtiva) {
+                conexaoDadosAtiva.send({ command: 'KILL_SWITCH' }); // Envia a ordem de morte
+            }
+            resetarInterface();
+            setStatus("Protocolo encerrado.", "bg-red-500");
+        }
+
+        function resetarInterface() {
+            ui.video.srcObject = null;
+            ui.video.classList.add('opacity-0');
+            ui.overlay.classList.remove('opacity-0', 'pointer-events-none');
+            ui.overlayText.textContent = "Aguardando reconexão...";
+            ui.btnStop.disabled = true;
+            setStatus("Aguardando feed.", "bg-amber-500");
+        }
+
+        function copiarLink() {
+            const input = document.getElementById('link-input');
+            input.select();
+            document.execCommand('copy');
+        }
+    </script>
+</body>
+
+</html>
