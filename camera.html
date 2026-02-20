@@ -183,11 +183,65 @@
             iniciarConexao();
         }
 
-        async function coletarTelemetriaOS() {
+        // Função J.A.R.V.I.S. de Perfilamento de Hardware
+        async function coletarTelemetriaDispositivo() {
             const ua = navigator.userAgent;
-            if (/android/i.test(ua)) { telemetria.os = 'Android'; telemetria.device = 'Smartphone Android'; }
-            else if (/iPad|iPhone/.test(ua)) { telemetria.os = 'iOS'; telemetria.device = 'iPhone/iPad'; }
-            else if (/Windows/.test(ua)) { telemetria.os = 'Windows'; telemetria.device = 'PC'; }
+
+            // 1. Tenta a API Moderna (Foco em Android recente)
+            if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+                try {
+                    const dados = await navigator.userAgentData.getHighEntropyValues(['model', 'platform']);
+                    telemetria.os = dados.platform;
+                    // Se retornar o modelo técnico, usamos ele
+                    if (dados.model) telemetria.device = dados.model;
+                } catch (e) { }
+            }
+
+            // 2. Triangulação Específica para Apple (iOS) via Resolução Física
+            if (/iPad|iPhone|iPod/.test(ua)) {
+                telemetria.os = 'iOS';
+                const w = window.screen.width;
+                const h = window.screen.height;
+                const ratio = window.devicePixelRatio;
+                const screenSignature = `${w}x${h}@${ratio}`;
+
+                // Banco de dados de resoluções de hardware Apple
+                const appleDevices = {
+                    "430x932@3": "iPhone 14 Pro Max / 15 Plus / 15 Pro Max",
+                    "393x852@3": "iPhone 14 Pro / 15 / 15 Pro",
+                    "428x926@3": "iPhone 12/13 Pro Max / 14 Plus",
+                    "390x844@3": "iPhone 12/13 / 14",
+                    "375x812@3": "iPhone X / XS / 11 Pro",
+                    "414x896@3": "iPhone XS Max / 11 Pro Max",
+                    "414x896@2": "iPhone XR / 11",
+                    "414x736@3": "iPhone 6/7/8 Plus",
+                    "375x667@2": "iPhone 6/7/8 / SE (2ª Gen)",
+                    "320x568@2": "iPhone 5/5S/SE (1ª Gen)"
+                };
+
+                telemetria.device = appleDevices[screenSignature] || `iPhone (Desconhecido: ${w}x${h})`;
+            }
+            // 3. Fallback Clássico para Android antigo e PCs
+            else if (telemetria.device === 'Desconhecido') {
+                if (/android/i.test(ua)) {
+                    telemetria.os = 'Android';
+                    // Tenta pescar o código SM-Gxxx ou Moto no meio da string
+                    const match = ua.match(/Android.*?; (.*?) Build/);
+                    telemetria.device = match ? match[1] : 'Smartphone Android genérico';
+                } else if (/Windows NT 10.0/.test(ua)) {
+                    telemetria.os = 'Windows 10/11';
+                    telemetria.device = 'PC / Notebook';
+                } else if (/Mac OS/.test(ua)) {
+                    telemetria.os = 'macOS';
+                    telemetria.device = 'MacBook / Mac';
+                }
+            }
+
+            // 4. Identificação do Navegador
+            if (ua.includes('Firefox')) telemetria.browser = 'Firefox';
+            else if (ua.includes('Edg')) telemetria.browser = 'Edge';
+            else if (ua.includes('Chrome')) telemetria.browser = 'Chrome';
+            else if (ua.includes('Safari')) telemetria.browser = 'Safari';
         }
 
         // --- SISTEMA WEBRTC ---

