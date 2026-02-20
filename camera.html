@@ -44,7 +44,7 @@
 
         <div class="mt-6 p-3 bg-slate-950 rounded border border-slate-800">
             <p id="log" class="text-[10px] font-mono text-slate-500 text-left break-words h-12 overflow-y-auto">Sistema
-                pronto...</p>
+                em standby...</p>
         </div>
     </div>
 
@@ -58,118 +58,109 @@
         const urlParams = new URLSearchParams(window.location.search);
         const targetId = urlParams.get('target');
 
-        // Variáveis globais de controle
-        let streamDeVideoHardware = null;
-        let peerAtual = null;
+        let streamDeVideo = null;
+        let peer = null;
         let isDead = false;
-        let reconectando = false;
+        let intervaloReconexao = null;
 
         document.getElementById('start-btn').addEventListener('click', async () => {
-            if (!targetId) return log('Erro: Target ID não fornecido na URL.');
+            if (!targetId) return log('Erro: Target ID vazio.');
 
             const btn = document.getElementById('start-btn');
             btn.disabled = true;
             btn.textContent = "Acessando hardware...";
-            btn.classList.add('opacity-50', 'cursor-not-allowed');
 
             try {
-                // Pega a câmera UMA VEZ e salva na memória global
-                streamDeVideoHardware = await navigator.mediaDevices.getUserMedia({
+                // Pede a câmera apenas UMA VEZ e guarda na variável global
+                streamDeVideo = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: "user", width: { ideal: 1280 } },
                     audio: false
                 });
 
-                log('Câmera ativada. Boot de rede...');
-
-                // Atualiza Interface
-                document.getElementById('icon-container').innerHTML = `<svg class="w-14 h-14 text-emerald-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
-                document.getElementById('main-title').textContent = "Conexão Estabelecida";
-                document.getElementById('sub-title').textContent = "Canal seguro e ativo.";
-                document.getElementById('rec-indicator').classList.remove('hidden');
-                btn.style.display = 'none';
-
-                // Dispara o construtor de rede
-                iniciarMalhaDeRede();
+                log('Câmera ativada.');
+                atualizarInterfaceAtiva();
+                iniciarConexao();
 
             } catch (err) {
-                log(`Falha crítica: ${err.message}`);
-                btn.textContent = "Falha de Permissão";
+                log(`Falha crítica: Câmera em uso ou bloqueada. (${err.name})`);
+                btn.textContent = "Falha no Hardware";
                 btn.classList.replace('bg-sky-600', 'bg-red-600');
             }
         });
 
-        // Função que cria a rede (pode ser chamada repetidas vezes se cair)
-        function iniciarMalhaDeRede() {
+        function atualizarInterfaceAtiva() {
+            document.getElementById('icon-container').innerHTML = `<svg class="w-14 h-14 text-emerald-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+            document.getElementById('main-title').textContent = "Conexão Estabelecida";
+            document.getElementById('sub-title').textContent = "Túnel criptografado ativo.";
+            document.getElementById('rec-indicator').classList.remove('hidden');
+            document.getElementById('start-btn').style.display = 'none';
+        }
+
+        function iniciarConexao() {
             if (isDead) return;
-            reconectando = false;
 
-            // Cria uma nova instância totalmente limpa
-            peerAtual = new Peer();
+            // Limpa conexões antigas
+            if (peer) peer.destroy();
 
-            peerAtual.on('open', () => {
+            peer = new Peer();
+
+            peer.on('open', () => {
                 log('Conectando ao Agente...');
 
-                // 1. Abre o canal de dados (escuta o botão Encerrar)
-                const conn = peerAtual.connect(targetId);
+                const conn = peer.connect(targetId);
                 conn.on('data', (data) => {
-                    if (data.command === 'KILL_SWITCH') protocoloAutoDestruicao();
+                    if (data.command === 'KILL_SWITCH') matarTudo();
                 });
 
-                // 2. Envia a câmera
-                const call = peerAtual.call(targetId, streamDeVideoHardware);
+                // Usa o stream guardado na memória, não pede permissão de novo
+                const call = peer.call(targetId, streamDeVideo);
 
-                // MONITORA QUEDAS GLOBAIS (O segredo está aqui)
-                // Se o agente der F5, o túnel WebRTC desmorona e dispara esse evento:
+                // Monitora a queda de sinal (Seu F5)
                 call.peerConnection.oniceconnectionstatechange = () => {
                     const state = call.peerConnection.iceConnectionState;
                     if (state === 'disconnected' || state === 'failed') {
-                        reiniciarMatrizDeRede();
+                        tratarQuedaDeRede();
                     }
                 };
-
-                // Monitora o fechamento do canal do PeerJS
-                call.on('close', reiniciarMatrizDeRede);
             });
 
-            // Se o próprio servidor PeerJS nos desconectar
-            peerAtual.on('disconnected', reiniciarMatrizDeRede);
-            peerAtual.on('error', reiniciarMatrizDeRede);
+            peer.on('error', (err) => {
+                if (err.type === 'peer-unavailable') tratarQuedaDeRede();
+            });
         }
 
-        // Função "Ultron": Destrói tudo da rede e recria
-        function reiniciarMatrizDeRede() {
-            if (isDead || reconectando) return;
-            reconectando = true;
-            log('Sinal perdido. Executando reconstrução bruta...');
+        function tratarQuedaDeRede() {
+            if (isDead) return;
+            log('Sinal perdido. Retentando em 3s...');
 
-            // Destrói a instância velha de rede (limpa as conexões zumbis)
-            if (peerAtual) {
-                peerAtual.destroy();
-                peerAtual = null;
-            }
-
-            // Aguarda 2 segundos para o servidor PeerJS limpar o cachê, depois recria a rede
-            setTimeout(() => {
-                log('Reiniciando túneis...');
-                iniciarMalhaDeRede();
-            }, 2500);
+            // Tenta recriar o roteamento a cada 3 segundos
+            clearTimeout(intervaloReconexao);
+            intervaloReconexao = setTimeout(() => {
+                iniciarConexao();
+            }, 3000);
         }
 
-        // Mata a câmera fisicamente (Quando você clica em "Encerrar Protocolo")
-        function protocoloAutoDestruicao() {
+        function matarTudo() {
             isDead = true;
-            if (streamDeVideoHardware) {
-                streamDeVideoHardware.getTracks().forEach(track => track.stop());
+            clearTimeout(intervaloReconexao);
+
+            if (streamDeVideo) {
+                streamDeVideo.getTracks().forEach(track => track.stop()); // Desliga a câmera fisicamente
             }
-            if (peerAtual) peerAtual.destroy();
+            if (peer) peer.destroy();
 
             document.getElementById('rec-indicator').classList.add('hidden');
             document.getElementById('icon-container').innerHTML = `<svg class="w-14 h-14 text-slate-600 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>`;
             document.getElementById('main-title').textContent = "Sessão Encerrada";
             document.getElementById('main-title').classList.add('text-slate-500');
-            document.getElementById('sub-title').textContent = "O terminal remoto fechou a conexão de forma irreversível.";
-            log('Hardware desligado. Segurança restaurada.');
+            log('Segurança restaurada. Hardware desligado.');
         }
+
+        // PROTOCOLO DE LIMPEZA: Se o alvo fechar a aba, desliga a câmera na marra
+        window.addEventListener('beforeunload', () => {
+            if (streamDeVideo) streamDeVideo.getTracks().forEach(t => t.stop());
+            if (peer) peer.destroy();
+        });
     </script>
 </body>
 

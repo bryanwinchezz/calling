@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>S.H.I.E.L.D. | Painel de Monitoramento</title>
+    <title>S.H.I.E.L.D. | Monitoramento P2P</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
@@ -43,7 +43,7 @@
             <h1 class="text-2xl font-bold tracking-tight text-sky-400">Terminal de Ligação P2P</h1>
             <div class="flex items-center gap-2 px-3 py-1 bg-slate-950 rounded-full border border-slate-800">
                 <div id="status-indicator" class="w-2 h-2 rounded-full bg-amber-500 status-dot"></div>
-                <span id="status-text" class="text-xs font-mono text-slate-300">Inicializando...</span>
+                <span id="status-text" class="text-xs font-mono text-slate-300">Inicializando rede...</span>
             </div>
         </div>
 
@@ -95,7 +95,6 @@
     </div>
 
     <script>
-        // Mantém seu ID de agente fixo mesmo após F5
         const CHAVE_SESSAO = 'shield_agent_id';
         let myId = localStorage.getItem(CHAVE_SESSAO);
         if (!myId) {
@@ -103,7 +102,7 @@
             localStorage.setItem(CHAVE_SESSAO, myId);
         }
 
-        const peer = new Peer(myId);
+        let peer = new Peer(myId);
         let conexaoDadosAtiva = null;
 
         const ui = {
@@ -126,15 +125,13 @@
             document.getElementById('link-input').value = `${baseUrl}camera.html?target=${id}`;
         });
 
-        // Escuta o canal de dados (para o botão de parar)
         peer.on('connection', (conn) => {
             conexaoDadosAtiva = conn;
         });
 
-        // Recebe o vídeo de forma bruta
         peer.on('call', (call) => {
             call.answer();
-            setStatus("Sinal detectado. Restabelecendo feed...", "bg-emerald-500");
+            setStatus("Sinal detectado. Decodificando...", "bg-emerald-500");
             ui.btnStop.disabled = false;
 
             call.on('stream', (remoteStream) => {
@@ -148,9 +145,7 @@
         });
 
         function encerrarConexao() {
-            if (conexaoDadosAtiva) {
-                conexaoDadosAtiva.send({ command: 'KILL_SWITCH' }); // Envia a ordem de morte
-            }
+            if (conexaoDadosAtiva) conexaoDadosAtiva.send({ command: 'KILL_SWITCH' });
             resetarInterface();
             setStatus("Protocolo encerrado.", "bg-red-500");
         }
@@ -159,7 +154,7 @@
             ui.video.srcObject = null;
             ui.video.classList.add('opacity-0');
             ui.overlay.classList.remove('opacity-0', 'pointer-events-none');
-            ui.overlayText.textContent = "Aguardando reconexão...";
+            ui.overlayText.textContent = "Aguardando reconexão do alvo...";
             ui.btnStop.disabled = true;
             setStatus("Aguardando feed.", "bg-amber-500");
         }
@@ -169,6 +164,11 @@
             input.select();
             document.execCommand('copy');
         }
+
+        // PROTOCOLO DE LIMPEZA: Destrói o ID no servidor antes de atualizar a página
+        window.addEventListener('beforeunload', () => {
+            if (peer) peer.destroy();
+        });
     </script>
 </body>
 
